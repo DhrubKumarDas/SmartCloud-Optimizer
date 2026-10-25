@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Security Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // User Profile Document (/users/{userId})
+    // Each user can read and manage only their own profile
+    match /users/{userId} {
+      allow read: if isValidId(userId) && isOwner(userId);
+      allow create, update: if isValidId(userId) && isOwner(userId);
+      allow delete: if isValidId(userId) && isOwner(userId);
+
+      // User Private Records (/users/{uid}/records/{recordId})
+      // Strictly isolates private user records to the authenticated owner.
+      // No user can read, write, modify, or delete another user's private records.
+      match /records/{recordId} {
+        allow read: if isValidId(recordId) && isOwner(userId);
+        allow create, update: if isValidId(recordId) && isOwner(userId);
+        allow delete: if isValidId(recordId) && isOwner(userId);
+      }
+    }
+  }
+}
